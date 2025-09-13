@@ -23,7 +23,34 @@ This guide will help you deploy your Node.js backend to Render.
    ```
    NODE_ENV=production
    JWT_SECRET=your-super-secret-jwt-key-here-change-this
+   DATABASE_URL=your-production-database-connection-string
+   DATABASE_URL_LOCAL=your-local-development-database-connection-string
    ```
+
+## 🗄️ Database Setup
+
+Your backend is now configured to use **PostgreSQL** with the following setup:
+
+### Database URLs Configured:
+- **Production:** `postgresql://ajadb_user:6USQiZSbW1rZAsYbFL1Fb7A12yzlPLG2@dpg-d32nhobipnbc73dbtk80-a.singapore-postgres.render.com/ajadb`
+- **Local Development:** Same URL (configured for both environments)
+
+### Database Schema:
+The `users` table is automatically created with the following structure:
+```sql
+CREATE TABLE users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Environment Variables:
+```
+DATABASE_URL=postgresql://ajadb_user:6USQiZSbW1rZAsYbFL1Fb7A12yzlPLG2@dpg-d32nhobipnbc73dbtk80-a.singapore-postgres.render.com/ajadb
+DATABASE_URL_LOCAL=postgresql://ajadb_user:6USQiZSbW1rZAsYbFL1Fb7A12yzlPLG2@dpg-d32nhobipnbc73dbtk80-a.singapore-postgres.render.com/ajadb
+```
 
 4. **Deploy:**
    - Click "Create Web Service"
@@ -70,7 +97,11 @@ Once deployed, your API will be available at:
 1. Deploy your backend to Render
 2. Update your frontend to use the production API URL
 3. Test the authentication flow
-4. Consider adding a database for persistent user storage
+4. **Set up a database** (optional but recommended for production):
+   - Choose a database (PostgreSQL, MongoDB, etc.)
+   - Set up the database connection in `server.js`
+   - Update the `DATABASE_URL` and `DATABASE_URL_LOCAL` environment variables
+   - Replace in-memory user storage with database operations
 
 ## 📞 Support
 
