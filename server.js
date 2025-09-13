@@ -33,7 +33,7 @@ app.post('/api/signin', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, email: user.email },
-      'your-secret-key', // In production, use environment variable
+      process.env.JWT_SECRET || 'your-secret-key', // Use environment variable
       { expiresIn: '24h' }
     );
 
