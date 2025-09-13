@@ -10,7 +10,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        sync: false
+        value: postgresql://ajadb_user:6USQiZSbW1rZAsYbFL1Fb7A12yzlPLG2@dpg-d32nhobipnbc73dbtk80-a.singapore-postgres.render.com/ajadb
       - key: DATABASE_URL_LOCAL
-        sync: false
+        value: postgresql://ajadb_user:6USQiZSbW1rZAsYbFL1Fb7A12yzlPLG2@dpg-d32nhobipnbc73dbtk80-a.singapore-postgres.render.com/ajadb
     plan: free

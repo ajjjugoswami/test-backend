@@ -18,10 +18,25 @@ const DATABASE_URL = process.env.NODE_ENV === 'production'
   : process.env.DATABASE_URL_LOCAL;
 
 // PostgreSQL connection
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+let pool;
+try {
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  });
+
+  // Test the connection
+  pool.on('connect', () => {
+    console.log('Database connected successfully');
+  });
+
+  pool.on('error', (err) => {
+    console.error('Unexpected database error:', err);
+  });
+} catch (error) {
+  console.error('Failed to create database connection:', error);
+  process.exit(1);
+}
 
 // Initialize database table
 async function initializeDatabase() {
@@ -37,16 +52,42 @@ async function initializeDatabase() {
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Database initialization error:', error);
+    // Don't exit process, just log the error
   }
 }
 
 // Initialize database on startup
 initializeDatabase();
 
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    await pool.query('SELECT 1');
+    res.json({
+      status: 'OK',
+      database: 'Connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({
+      status: 'ERROR',
+      database: 'Disconnected',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Sign-in endpoint
 app.post('/api/signin', async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
 
     // Find user in database
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -65,7 +106,7 @@ app.post('/api/signin', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || 'your-secret-key',
+      process.env.JWT_SECRET || 'fallback-secret-key',
       { expiresIn: '24h' }
     );
 
@@ -76,7 +117,7 @@ app.post('/api/signin', async (req, res) => {
     });
   } catch (error) {
     console.error('Sign-in error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });
 
@@ -84,6 +125,14 @@ app.post('/api/signin', async (req, res) => {
 app.post('/api/signup', async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
 
     // Check if user already exists
     const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
@@ -108,7 +157,7 @@ app.post('/api/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Sign-up error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 });
 
