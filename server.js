@@ -17,29 +17,45 @@ const DATABASE_URL = process.env.NODE_ENV === 'production'
   ? process.env.DATABASE_URL
   : process.env.DATABASE_URL_LOCAL;
 
-// PostgreSQL connection
+// PostgreSQL connection (only if DATABASE_URL is provided)
 let pool;
-try {
-  pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-  });
+let useDatabase = false;
 
-  // Test the connection
-  pool.on('connect', () => {
-    console.log('Database connected successfully');
-  });
+if (DATABASE_URL) {
+  try {
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    });
 
-  pool.on('error', (err) => {
-    console.error('Unexpected database error:', err);
-  });
-} catch (error) {
-  console.error('Failed to create database connection:', error);
-  process.exit(1);
+    // Test the connection
+    pool.on('connect', () => {
+      console.log('Database connected successfully');
+      useDatabase = true;
+    });
+
+    pool.on('error', (err) => {
+      console.error('Unexpected database error:', err);
+      useDatabase = false;
+    });
+  } catch (error) {
+    console.error('Failed to create database connection:', error);
+    useDatabase = false;
+  }
+} else {
+  console.log('No DATABASE_URL provided, using in-memory storage for development');
 }
+
+// In-memory user storage (fallback for development)
+const users = [];
 
 // Initialize database table
 async function initializeDatabase() {
+  if (!useDatabase || !pool) {
+    console.log('Skipping database initialization - using in-memory storage');
+    return;
+  }
+
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -52,7 +68,7 @@ async function initializeDatabase() {
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Database initialization error:', error);
-    // Don't exit process, just log the error
+    useDatabase = false; // Fall back to in-memory storage
   }
 }
 
@@ -62,11 +78,18 @@ initializeDatabase();
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    // Test database connection
-    await pool.query('SELECT 1');
+    let databaseStatus = 'In-memory storage';
+
+    if (useDatabase && pool) {
+      // Test database connection
+      await pool.query('SELECT 1');
+      databaseStatus = 'Connected';
+    }
+
     res.json({
       status: 'OK',
-      database: 'Connected',
+      database: databaseStatus,
+      environment: process.env.NODE_ENV || 'development',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -74,6 +97,7 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({
       status: 'ERROR',
       database: 'Disconnected',
+      environment: process.env.NODE_ENV || 'development',
       error: error.message,
       timestamp: new Date().toISOString()
     });
@@ -89,9 +113,16 @@ app.post('/api/signin', async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    // Find user in database
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    const user = result.rows[0];
+    let user;
+
+    if (useDatabase && pool) {
+      // Use database
+      const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      user = result.rows[0];
+    } else {
+      // Use in-memory storage
+      user = users.find(u => u.email === email);
+    }
 
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
@@ -134,22 +165,42 @@ app.post('/api/signup', async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters long' });
     }
 
-    // Check if user already exists
-    const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
+    let existingUser;
+
+    if (useDatabase && pool) {
+      // Check if user already exists in database
+      const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      existingUser = result.rows[0];
+    } else {
+      // Check if user already exists in memory
+      existingUser = users.find(u => u.email === email);
+    }
+
+    if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user in database
-    const result = await pool.query(
-      'INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email',
-      [email, hashedPassword]
-    );
+    let newUser;
 
-    const newUser = result.rows[0];
+    if (useDatabase && pool) {
+      // Create user in database
+      const result = await pool.query(
+        'INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email',
+        [email, hashedPassword]
+      );
+      newUser = result.rows[0];
+    } else {
+      // Create user in memory
+      newUser = {
+        id: users.length + 1,
+        email,
+        password: hashedPassword
+      };
+      users.push(newUser);
+    }
 
     res.status(201).json({
       message: 'User created successfully',
