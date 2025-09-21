@@ -17,11 +17,11 @@ const DATABASE_URL = process.env.NODE_ENV === 'production'
   ? process.env.DATABASE_URL
   : process.env.DATABASE_URL_LOCAL;
 
-// PostgreSQL connection (only if DATABASE_URL is provided)
+// PostgreSQL connection (only if DATABASE_URL is provided and in production)
 let pool;
 let useDatabase = false;
 
-if (DATABASE_URL) {
+if (DATABASE_URL && process.env.NODE_ENV === 'production') {
   try {
     pool = new Pool({
       connectionString: DATABASE_URL,
@@ -43,7 +43,7 @@ if (DATABASE_URL) {
     useDatabase = false;
   }
 } else {
-  console.log('No DATABASE_URL provided, using in-memory storage for development');
+  console.log('Using in-memory storage for development');
 }
 
 // In-memory user storage (fallback for development)
@@ -51,8 +51,8 @@ const users = [];
 
 // Initialize database table
 async function initializeDatabase() {
-  if (!useDatabase || !pool) {
-    console.log('Skipping database initialization - using in-memory storage');
+  if (!pool) {
+    console.log('No database pool available');
     return;
   }
 
@@ -66,14 +66,24 @@ async function initializeDatabase() {
       )
     `);
     console.log('Database initialized successfully');
+    useDatabase = true;
   } catch (error) {
     console.error('Database initialization error:', error);
     useDatabase = false; // Fall back to in-memory storage
   }
 }
 
+// Wait for database connection and initialize
+async function setupDatabase() {
+  if (pool) {
+    // Wait a bit for connection to establish
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await initializeDatabase();
+  }
+}
+
 // Initialize database on startup
-initializeDatabase();
+setupDatabase();
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
