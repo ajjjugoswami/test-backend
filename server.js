@@ -13,19 +13,17 @@ app.use(cors());
 app.use(express.json());
 
 // Database Configuration
-const DATABASE_URL = process.env.NODE_ENV === 'production'
-  ? process.env.DATABASE_URL
-  : process.env.DATABASE_URL_LOCAL;
+const DATABASE_URL = process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL;
 
-// PostgreSQL connection (only if DATABASE_URL is provided and in production)
+// PostgreSQL connection (only if DATABASE_URL is provided)
 let pool;
 let useDatabase = false;
 
-if (DATABASE_URL && process.env.NODE_ENV === 'production') {
+if (DATABASE_URL) {
   try {
     pool = new Pool({
       connectionString: DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+      ssl: { rejectUnauthorized: false }
     });
 
     // Test the connection
@@ -43,7 +41,7 @@ if (DATABASE_URL && process.env.NODE_ENV === 'production') {
     useDatabase = false;
   }
 } else {
-  console.log('Using in-memory storage for development');
+  console.log('No DATABASE_URL provided, using in-memory storage');
 }
 
 // In-memory user storage (fallback for development)
@@ -69,7 +67,15 @@ async function initializeDatabase() {
     useDatabase = true;
   } catch (error) {
     console.error('Database initialization error:', error);
-    useDatabase = false; // Fall back to in-memory storage
+    // Try a simple query to see if database is accessible
+    try {
+      await pool.query('SELECT 1');
+      console.log('Database connection works, but table creation failed. Assuming table exists.');
+      useDatabase = true;
+    } catch (simpleError) {
+      console.error('Database connection also failed:', simpleError);
+      useDatabase = false; // Fall back to in-memory storage
+    }
   }
 }
 
